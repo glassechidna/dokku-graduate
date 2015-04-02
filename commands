@@ -1,0 +1,383 @@
+#!/usr/bin/env bash
+set -eo pipefail; [[ $DOKKU_TRACE ]] && set -x
+source "$(dirname $0)/../common/functions"
+
+require_clean_work_tree () {
+  trap "echo \"Uh-oh, something went wrong. Please ensure that /home/dokku is owned by dokku\"" INT EXIT TERM
+
+  dokku_log_info1_quiet "Checking dokku working directory..."
+  pushd "$DOKKU_ROOT" > /dev/null
+
+  local err=false
+
+  # Update the index
+  git update-index -q --ignore-submodules --refresh
+
+  # Disallow unstaged changes in the working tree
+  if ! git diff-files --quiet --ignore-submodules --; then
+    echo >&2 "cannot $1: $DOKKU_ROOT has unstaged changes."
+    git diff-files --name-status -r --ignore-submodules -- >&2
+    echo >&2 "Please stage and commit them."
+    err=true
+  fi
+
+  if [[ $(git show-ref) ]]; then
+    # Disallow uncommitted changes in the index
+    if ! git diff-index --cached --quiet HEAD --ignore-submodules --; then
+      echo >&2 "cannot $1: the index for $DOKKU_ROOT contains uncommitted changes."
+      git diff-index --cached --name-status -r --ignore-submodules HEAD -- >&2
+      echo >&2 "Please commit them."
+      err=true
+    fi
+  fi
+
+  # Disallow untracked files
+  local untracked=$(git ls-files --other --exclude-standard --exclude-from=.gitignore --exclude-per-directory=.gitignore --directory)
+  if [[ $untracked ]]; then
+    echo >&2 "cannot $1: $DOKKU_ROOT contains untracked files."
+    printf '%s\n' "${untracked[@]}" >&2
+    echo >&2 "Please stage and commit them, or add them to $DOKKU_ROOT/.gitignore"
+    err=true
+  fi
+
+  popd > /dev/null
+
+  trap - INT EXIT TERM
+
+  if $err; then
+    exit 1
+  fi
+}
+
+environment_url () {
+  echo $(grep -oP "(?<=\b$1=).+$" "$DOKKU_ROOT/GRADUATE_ENVIRONMENTS" 2> /dev/null)
+}
+
+confirm () {
+    read -r -p "$1 [y/N]} " response
+    case $response in
+        [yY][eE][sS]|[yY])
+            true
+            ;;
+        *)
+            exit 0
+            ;;
+    esac
+}
+
+locate_apps () {
+  APPS=()
+  for app in "$DOKKU_ROOT"/*/CONTAINER; do
+    APPS+=( $(basename "$(dirname "$app")") )
+  done
+}
+
+prehooks () {
+  dokku_log_info1 "Executing pre-graduation hooks..."
+
+  if [[ -f "$DOKKU_ROOT/GRADUATE_PRE_HOOKS" ]]; then
+    bash "$DOKKU_ROOT/GRADUATE_PRE_HOOKS" && true
+    local hooks=$?
+
+    if (( $hooks != 0 )); then
+      dokku_log_fail "Pre-graduation hooks failed. Graduation to $ENVIRONMENT cancelled."
+    fi
+  fi
+}
+
+abort_previous_app () {
+  ABORTING=true
+  let 'APP_INDEX -= 1' || true
+
+  if (( $APP_INDEX >= 0 )); then
+    local app=${APPS[$APP_INDEX]}
+    ssh -t dokku@$ENVIRONMENT_URL "graduate:abort $app" 2> /dev/null
+  fi
+}
+
+continue_previous_app () {
+  let 'APP_INDEX -= 1' || true
+
+  if (( $APP_INDEX >= 0 )); then
+    local app=${APPS[$APP_INDEX]}
+    ssh -t dokku@$ENVIRONMENT_URL "graduate:continue $app" 2> /dev/null
+  else
+    dokku_log_info1 "All apps deployed to $ENVIRONMENT."
+  fi
+}
+
+posthooks () {
+  dokku_log_info1 "Executing post-graduation hooks..."
+
+  if [[ -f "$DOKKU_ROOT/GRADUATE_PRE_HOOKS" ]]; then
+    bash "$DOKKU_ROOT/GRADUATE_PRE_HOOKS" && true
+    local hooks=$?
+
+    if (( $hooks == 0 )); then
+      continue_previous_app
+    else
+      dokku_log_warn "Post-graduation hooks failed. Aborting graduation..."
+      abort_previous_app
+    fi
+  else
+    continue_previous_app
+  fi
+}
+
+deploy_next_app () {
+  let 'APP_INDEX += 1' || true
+
+  if (( $APP_INDEX < ${#APPS[@]} )); then
+    local app=${APPS[$APP_INDEX]}
+    local appdir="$DOKKU_ROOT/$app"
+
+    dokku_log_info2 "Deploying $app..."
+
+    pushd $appdir > /dev/null
+
+    local deployed=true
+
+    set +e
+
+    git remote rm graduate &> /dev/null
+    git remote add graduate dokku@$ENVIRONMENT_URL:$app > /dev/null
+
+    if [[ $(git push graduate master -n 2>&1) == "Everything up-to-date" ]]; then
+      echo "Everything up-to-date"
+      deploy_next_app || deployed=false
+    else
+      ( stdbuf -o0 git push graduate master 2>&1 | tee /dev/tty | grep --line-buffered "Waiting on graduating peers..." | ( read && deploy_next_app ) ) || deployed=false
+    fi
+
+    git remote rm graduate &> /dev/null
+
+    set -e
+
+    popd > /dev/null
+
+    if $deployed && ! $ABORTING; then
+      dokku_log_info2 "$app deployed"
+      continue_previous_app
+    else
+      dokku_log_warn "$app deployment aborted"
+      abort_previous_app
+    fi
+  else
+    posthooks
+  fi
+}
+
+deploy_apps () {
+  ABORTING=false
+  let "APP_INDEX = -1"
+  deploy_next_app
+}
+
+graduate () {
+  prehooks
+
+  dokku_log_info1 "Contacting $ENVIRONMENT..."
+
+  ssh -t dokku@$ENVIRONMENT_URL "graduate:clean" 2> /dev/null
+  sleep 5 # Give orphaned waiting containers on ENVIRONMENT time to read GRADUATE_STATUS
+
+  ssh -t dokku@$ENVIRONMENT_URL "graduate:start" 2> /dev/null
+  deploy_apps
+
+  ! $ABORTING
+
+  ssh -t dokku@$ENVIRONMENT_URL "graduate:finish" 2> /dev/null
+}
+
+CMD="$1"
+[[ $CMD ]] && {
+  shift
+}
+
+case "$CMD" in
+  graduate)
+    ENVIRONMENT=$1
+    [[ $ENVIRONMENT ]] && {
+      shift
+    }
+
+    ENVIRONMENT_URL=$(environment_url $ENVIRONMENT)
+
+    if ! [[ $ENVIRONMENT_URL ]]; then
+      dokku_log_fail "Unknown environment: $ENVIRONMENT"
+    fi
+
+    locate_apps
+
+    if (( ${#APPS[@]} == 0 )); then
+      dokku_log_fail "There are no apps to graduate"
+    fi
+
+    require_clean_work_tree "graduate"
+
+    pushd "$DOKKU_ROOT" > /dev/null
+
+    LAST_TAG=$(git tag | awk 'match($0, /'$ENVIRONMENT'\/[0-9]+/, a){print a[0]}' | tail -1)
+
+    if [[ $LAST_TAG ]]; then
+      CHANGES=$(git diff --exit-code --quiet $LAST_TAG..HEAD)$? || true
+
+      if (( CHANGES == 0 )); then
+        dokku_log_info1 "No changes to be deployed to $ENVIRONMENT"
+        exit 0
+      fi
+
+      git log --name-status $LAST_TAG..HEAD
+    else
+      git log --name-status
+    fi
+
+    confirm "Do you wish to proceed?"
+
+    graduate
+    git tag "$ENVIRONMENT/$(date +%Y%m%d%H%M%S)"
+
+    popd > /dev/null
+    ;;
+
+  graduate:add-environment)
+    ENVIRONMENT=$1
+    [[ $ENVIRONMENT ]] && {
+      shift
+      URL=$1
+      [[ $URL ]] && {
+        shift
+      }
+    }
+
+    if [[ $ENVIRONMENT =~ ^[a-zA-Z0-9_./-]+$ ]]; then
+      if [[ $(environment_url $ENVIRONMENT) ]]; then
+        dokku_log_fail "$ENVIRONMENT already exists"
+      fi
+
+      echo "$ENVIRONMENT=$URL" >> "$DOKKU_ROOT/GRADUATE_ENVIRONMENTS"
+      dokku_log_info1_quiet "$ENVIRONMENT environment added"
+    else
+      dokku_log_fail "$ENVIRONMENT is not a valid environment name"
+    fi
+    ;;
+
+  graduate:rm-environment)
+    ENVIRONMENT=$1
+    [[ $ENVIRONMENT ]] && {
+      shift
+    }
+
+    if ! [[ $(environment_url $ENVIRONMENT) ]]; then
+      dokku_log_fail "$ENVIRONMENT does not exist"
+    fi
+
+    awk '!/^'$ENVIRONMENT'=.+$/{print}' "$DOKKU_ROOT/GRADUATE_ENVIRONMENTS" > "$DOKKU_ROOT/TMP_GRADUATE_ENVIRONMENTS"
+    mv "$DOKKU_ROOT/TMP_GRADUATE_ENVIRONMENTS" "$DOKKU_ROOT/GRADUATE_ENVIRONMENTS"
+    ;;
+
+  graduate:environments)
+    cat "$DOKKU_ROOT/GRADUATE_ENVIRONMENTS"
+    ;;
+
+  graduate:add-hook)
+    HOOK_TYPE=$1
+    [[ $HOOK_TYPE ]] && {
+      shift
+      COMMAND=$1
+      [[ $COMMAND ]] && {
+        shift
+      }
+    }
+
+    if [[ "$HOOK_TYPE" != "PRE" && "$HOOK_TYPE" != "POST" ]]; then
+      dokku_log_fail "$HOOK_TYPE is not a valid hook type"
+    fi
+
+    ONE_LINE_COMMAND=$(echo "$COMMAND" | gawk 'BEGIN{ORS=" ";} {print gensub(/([^;[:space:]])\s*$/, "\\1;", "g");}')
+    echo "$ONE_LINE_COMMAND" >>  "$DOKKU_ROOT/GRADUATE_$HOOK_TYPE_HOOKS"
+    ;;
+
+  graduate:rm-hook)
+    HOOK_TYPE=$1
+    [[ $HOOK_TYPE ]] && {
+      shift
+      LINE_NUMBER=$1
+      [[ $LINE_NUMBER ]] && {
+        shift
+      }
+    }
+
+    if [[ "$HOOK_TYPE" != "PRE" && "$HOOK_TYPE" != "POST" ]]; then
+      dokku_log_fail "$HOOK_TYPE is not a valid hook type"
+    fi
+
+    if [[ -f "$DOKKU_ROOT/GRADUATE_$HOOK_TYPE_HOOKS" ]]; then
+      awk "!(NR==$LINE_NUMBER)" < "$DOKKU_ROOT/GRADUATE_$HOOK_TYPE_HOOKS" > "$DOKKU_ROOT/TMP_GRADUATE_$HOOK_TYPE_HOOKS"
+      mv "$DOKKU_ROOT/TMP_GRADUATE_$HOOK_TYPE_HOOKS" "$DOKKU_ROOT/GRADUATE_$HOOK_TYPE_HOOKS"
+    fi
+    ;;
+
+  graduate:hooks)
+    HOOK_TYPE=$1
+    [[ $HOOK_TYPE ]] && {
+      shift
+    }
+
+    if [[ "$HOOK_TYPE" != "PRE" && "$HOOK_TYPE" != "POST" ]]; then
+      dokku_log_fail "$HOOK_TYPE is not a valid hook type"
+    fi
+
+    if [[ -f "$DOKKU_ROOT/GRADUATE_$HOOK_TYPE_HOOKS" ]]; then
+      awk '{ print FNR " " $0 }' "$DOKKU_ROOT/GRADUATE_$HOOK_TYPE_HOOKS"
+    fi
+    ;;
+
+  help | graduate:help)
+    cat && cat<<EOF
+    graduate <environment>                          Push all apps to the environment
+    graduate:add-environment <name> <url>           Add an environment.
+    graduate:rm-environment <name>                  Remove an environment
+    graduate:environments                           List environments
+    graduate:add-hook <PRE | POST> <command>        Add pre or post graduation hook
+    graduate:rm-hook <PRE | POST> <index>           Remove a hook by its index
+    graduate:hooks                                  List hooks with their indexes
+EOF
+    ;;
+
+  # Private commands
+
+  graduate:clean)
+    echo "cleaning" > "$DOKKU_ROOT/GRADUATE_STATUS"
+    ;;
+
+  graduate:start)
+    echo "deploying" > "$DOKKU_ROOT/GRADUATE_STATUS"
+    echo "Graduating apps..."
+    ;;
+
+  graduate:finish)
+    echo "finished" > "$DOKKU_ROOT/GRADUATE_STATUS"
+    echo "Graduation complete."
+    ;;
+
+  graduate:continue)
+    APP=$1
+    [[ $APP ]] && {
+      shift
+    }
+    echo "$APP:continue" > "$DOKKU_ROOT/GRADUATE_STATUS"
+    ;;
+
+  graduate:abort)
+    APP=$1
+    [[ $APP ]] && {
+      shift
+    }
+    echo "$APP:abort" > "$DOKKU_ROOT/GRADUATE_STATUS"
+    ;;
+
+  *)
+    exit $DOKKU_NOT_IMPLEMENTED_EXIT
+    ;;
+esac

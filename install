@@ -1,0 +1,115 @@
+#!/usr/bin/env bash
+set -eo pipefail; [[ $DOKKU_TRACE ]] && set -x
+
+pushd "$DOKKU_ROOT" > /dev/null
+if (( $(git status &> /dev/null)$? )); then
+  git init --quiet "$DOKKU_ROOT"
+  cat<<EOF > "$DOKKU_ROOT/.gitignore"
+.DS_Store
+/.bash_history
+/.ssh/
+/*/branches/
+/*/cache/
+/*/config
+/*/CONTAINER
+/*/description
+/*/hooks/
+/*/info/
+/*/nginx.conf
+/*/objects/
+/*/packed-refs
+/*/PORT
+/*/refs/remotes/
+/*/refs/tags/
+/*/URL
+/GRADUATE_ENVIRONMENTS
+/GRADUATE_PRE_HOOKS
+/GRADUATE_POST_HOOKS
+/GRADUATE_STATUS
+
+EOF
+fi
+pushd "$DOKKU_ROOT" > /dev/null
+
+CHECK_DEPLOY_DIR="$(dirname $0)/../zzz_dokku-graduate"
+
+if ! [[ -d "$CHECK_DEPLOY_DIR" ]]; then
+  mkdir "$CHECK_DEPLOY_DIR"
+fi
+
+cat<<"EOF" > "$CHECK_DEPLOY_DIR/check-deploy"
+#!/usr/bin/env bash
+# This hook is a component of the dokku-graduate plugin. It is installed here,
+# rather than being included in the main dokku-graduate directory, to try ensure
+# that this hook is called after all other hooks.
+set -eo pipefail; [[ $DOKKU_TRACE ]] && set -x
+source "$(dirname $0)/../common/functions"
+
+CONTAINERID="$1"; APP="$2"; PORT="$3" ; HOSTNAME="${4:-localhost}"
+
+POLL_SECONDS=3
+MAXIMUM_WAIT_SECONDS=7200 # 2 hours.... if your deploy is taking longer, just give up.
+let "WAITED = 0" || true
+
+GRADUATE_STATUS=""
+
+if [[ -f "$DOKKU_ROOT/GRADUATE_STATUS" ]]; then
+  read -r GRADUATE_STATUS < "$DOKKU_ROOT/GRADUATE_STATUS"
+fi
+
+if [[ "$GRADUATE_STATUS" == "deploying" ]]; then
+  echo "Waiting on graduating peers..."
+
+  while [[ "$GRADUATE_STATUS" != $APP:* ]] && [[ "$GRADUATE_STATUS" != "cleaning" ]] && (( $WAITED < $MAXIMUM_WAIT_SECONDS )); do
+    if [[ -e "$DOKKU_ROOT/GRADUATE_STATUS" ]]; then
+      read -r GRADUATE_STATUS < "$DOKKU_ROOT/GRADUATE_STATUS"
+    fi
+
+    let "WAITED += $POLL_SECONDS"
+    sleep $POLL_SECONDS
+  done
+
+  case "$GRADUATE_STATUS" in
+    $APP:continue)
+      dokku_log_info2_quiet "Continuing with $APP deployment..."
+      ;;
+
+    $APP:abort)
+      dokku_log_fail "$APP deployment aborted"
+      ;;
+
+    *)
+      dokku_log_fail "$APP timed out waiting for peers to graduate"
+      ;;
+  esac
+fi
+
+EOF
+
+chmod 755 "$CHECK_DEPLOY_DIR/check-deploy"
+
+cat<<"EOF" > "$CHECK_DEPLOY_DIR/commands"
+#!/usr/bin/env bash
+# This script is a component of the dokku-graduate plugin. It is installed here,
+# alongside the check-deploy script as each directory is considered a plugin,
+# and each plugin must implement the help command.
+set -eo pipefail; [[ $DOKKU_TRACE ]] && set -x
+
+CMD="$1"
+[[ $CMD ]] && {
+  shift
+}
+
+case "$CMD" in
+  help)
+    cat
+    ;;
+
+  *)
+    exit $DOKKU_NOT_IMPLEMENTED_EXIT
+    ;;
+esac
+
+EOF
+
+chmod 755 "$CHECK_DEPLOY_DIR/commands"
