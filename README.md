@@ -1,5 +1,7 @@
 # Dokku Graduate
 
+[Homepage](http://glassechidna.github.io/dokku-graduate/): http://glassechidna.github.io/dokku-graduate/
+
 Dokku Graduate is a simple plug-in for Dokku that helps manage the deployment of
 multiple Dokku apps to multiple environments.
 
