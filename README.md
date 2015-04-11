@@ -60,6 +60,15 @@ For example, if a recent app commit required that you define the env var
 ```MAILER_ADDRESS```, then you'll want to remember to add this same env var to
 Dokku app running in the graduation destination environment.
 
+**Before the first time you graduate**, you'll probably just want to do the
+following:
+
+    sudo -u dokku bash
+    cd /home/dokku
+    git add --all .
+    git commit -m "Initial environment state"
+    exit
+
 ### Rolling back
 
 Another advantage of having ```/home/dokku``` as a Git repo is that it makes it
