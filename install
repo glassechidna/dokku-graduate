@@ -112,4 +112,9 @@ esac
 
 EOF
 
+SSH_PRIVATE_KEY=/home/dokku/.ssh/id_rsa
+if ! [[ -f "$SSH_PRIVATE_KEY" ]]; then
+  ssh-keygen -f "$SSH_PRIVATE_KEY" -t rsa -N '' > /dev/null
+fi
+
 chmod 755 "$CHECK_DEPLOY_DIR/commands"
