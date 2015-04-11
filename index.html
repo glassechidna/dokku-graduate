@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset='utf-8'>
+    <meta http-equiv="X-UA-Compatible" content="chrome=1">
+    <link href='https://fonts.googleapis.com/css?family=Chivo:900' rel='stylesheet' type='text/css'>
+    <link rel="stylesheet" type="text/css" href="stylesheets/stylesheet.css" media="screen">
+    <link rel="stylesheet" type="text/css" href="stylesheets/pygment_trac.css" media="screen">
+    <link rel="stylesheet" type="text/css" href="stylesheets/print.css" media="print">
+    <!--[if lt IE 9]>
+    <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <title>Dokku-graduate by glassechidna</title>
+  </head>
+
+  <body>
+    <div id="container">
+      <div class="inner">
+
+        <header>
+          <h1>Dokku-graduate</h1>
+          <h2>A simple environment lifecyle management plugin for dokku.</h2>
+        </header>
+
+        <section id="downloads" class="clearfix">
+          <a href="https://github.com/glassechidna/dokku-graduate/zipball/master" id="download-zip" class="button"><span>Download .zip</span></a>
+          <a href="https://github.com/glassechidna/dokku-graduate/tarball/master" id="download-tar-gz" class="button"><span>Download .tar.gz</span></a>
+          <a href="https://github.com/glassechidna/dokku-graduate" id="view-on-github" class="button"><span>View on GitHub</span></a>
+        </section>
+
+        <hr>
+
+        <section id="main_content">
+          <h3>
+<a id="dokku-graduate" class="anchor" href="#dokku-graduate" aria-hidden="true"><span class="octicon octicon-link"></span></a>Dokku Graduate</h3>
+
+<p>Dokku Graduate is a simple plug-in for Dokku that helps manage the deployment of multiple Dokku apps to multiple environments (<code>development</code>, <code>staging</code>, <code>UAT</code>, <code>production</code> etc).</p>
+
+<h3>
+<a id="what-problem-does-this-plugin-solve" class="anchor" href="#what-problem-does-this-plugin-solve" aria-hidden="true"><span class="octicon octicon-link"></span></a>What problem does this plugin solve?</h3>
+
+<p>Larger projects are frequently made up of multiple apps. Whilst Dokku does a fantastic job of managing individual apps and making their deployment a breeze. Dokku does not directly handle the situation of having multiple apps that interact with each other, or depend on each other.</p>
+
+<h4>
+<a id="an-example" class="anchor" href="#an-example" aria-hidden="true"><span class="octicon octicon-link"></span></a>An Example</h4>
+
+<p>Say we have two Dokku apps running in both <code>development</code> and in <code>production</code>. One app is a Rails website, called <code>portal</code>, and the other is set of Sinatra web-services called <code>webservices</code>. Both of these apps share the same data mode, and the same data store (e.g. a PostgreSQL database). <code>portal</code> is an admin interface and <code>webservices</code> is for consumers.</p>
+
+<p>We want to deploy updated projects with a new data model to <code>production</code>. Typically you'd write a Rails migration which you could then kick off as a Dokku hook, or perhaps manually once <code>portal</code> has deployed to <code>production</code>. However, what happens to <code>webservices</code>, which is also using the same data store? A new <code>webservices</code> that understands the updated data model also needs to be deployed.</p>
+
+<p>We can't deploy <code>webservices</code> after <code>portal</code> and the migration have run, because after the migration has run the old <code>webservices</code> will still be running and trying to use the old data model with the new data store structure.</p>
+
+<p>We can't deploy the new <code>webservices</code> before <code>portal</code>, because the migration is yet to run and <code>webservices</code> will try use the new data model on the old data store. This would be particularly problematic if <code>portal</code> failed to deploy!</p>
+
+<p>Dokku Graduate helps solve this problem.</p>
+
+<h3>
+<a id="how-does-it-work" class="anchor" href="#how-does-it-work" aria-hidden="true"><span class="octicon octicon-link"></span></a>How does it work?</h3>
+
+<p>Dokku Graduate allows you to <strong>graduate</strong> an entire set of apps in one environment to another environment. However, we do not simply deploy all the apps and let them go live one at a time. Apps will <em>not</em> go live (e.g. have their ports exposed) until they themselves, and all their peers, have passed Dokku's <em>check-install</em> phase.</p>
+
+<p>Dokku Graduate also provides its own set of hooks, including its own <strong>POST</strong> [deployment] hook, that is called after every app has deployed and passed Dokku's <em>check-install</em> phase. Dokku Graduate's <strong>POST</strong> hook gives you an opportunity to kick off a process that will affect multiple apps running in the one environment (e.g. a database migration), or run any sort of environment wide tests. If a <strong>POST</strong> hook fails, then the whole graduation is aborted, and none of the apps will go live.</p>
+
+<h4>
+<a id="back-to-the-example" class="anchor" href="#back-to-the-example" aria-hidden="true"><span class="octicon octicon-link"></span></a>Back to the example</h4>
+
+<p>Using Dokku Graduate, we would perform our database migration as a <strong>POST</strong> hook. Then we would graduate from <code>development</code> to <code>production</code>; deploying both apps to <code>production</code> and performing Dokku <em>check-install</em> hooks for both <code>portal</code> and <code>webservices</code>, and our database migration (the Dokku Graduate <strong>POST</strong> hook) <em>before</em> anything becomes publicly accessible. If either app fails to deploy, or the migration were to fail then the entire graduation would be aborted ensuring <code>production</code> is not left in broken state. Great!</p>
+
+<p><em><strong>Note:</strong></em> <em>I feel I should mention that, in this example, there is still a small window of time where you would have to take some care to ensure that the old (publicly accessible) app/Docker instances for <code>portal</code> and <code>webservices</code> don't try access the data store during/after the migration.</em></p>
+
+<p>To be clear, Dokku Graduate isn't just useful for database migrations. It's also very useful if you have apps that depend on each other. For example, if <code>portal</code> were to consume private web services provided by <code>webservices</code> and you want to change the API. Or, perhaps if <code>portal</code> and <code>webservices</code> mutually consume each others' functionality!</p>
+
+<h3>
+<a id="im-sold-how-do-i-get-started" class="anchor" href="#im-sold-how-do-i-get-started" aria-hidden="true"><span class="octicon octicon-link"></span></a>I'm sold. How do I get started?</h3>
+
+<p>Please refer to the <a href="http://github.com/glassechidna/dokku-graduate">README</a> on Github.</p>
+        </section>
+
+        <footer>
+          Dokku-graduate is maintained by <a href="https://github.com/glassechidna">glassechidna</a><br>
+          This page was generated by <a href="https://pages.github.com">GitHub Pages</a>. Tactile theme by <a href="https://twitter.com/jasonlong">Jason Long</a>.
+        </footer>
+
+        
+      </div>
+    </div>
+  </body>
+</html>
