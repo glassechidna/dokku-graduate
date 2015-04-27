@@ -8,6 +8,7 @@ if (( $(git status &> /dev/null)$? )); then
 .DS_Store
 /.bash_history
 /.ssh/
+/*/.build.lock
 /*/branches/
 /*/cache/
 /*/config
@@ -15,6 +16,7 @@ if (( $(git status &> /dev/null)$? )); then
 /*/description
 /*/hooks/
 /*/info/
+/*/IP
 /*/nginx.conf
 /*/objects/
 /*/packed-refs
@@ -22,11 +24,11 @@ if (( $(git status &> /dev/null)$? )); then
 /*/refs/remotes/
 /*/refs/tags/
 /*/URL
+/*/URLS
 /GRADUATE_ENVIRONMENTS
 /GRADUATE_PRE_HOOKS
 /GRADUATE_POST_HOOKS
 /GRADUATE_STATUS
-
 EOF
 fi
 pushd "$DOKKU_ROOT" > /dev/null
