@@ -47,7 +47,7 @@ cat<<"EOF" > "$CHECK_DEPLOY_DIR/check-deploy"
 set -eo pipefail; [[ $DOKKU_TRACE ]] && set -x
 source "$(dirname $0)/../common/functions"
 
-CONTAINERID="$1"; APP="$2"; PORT="$3" ; HOSTNAME="${4:-localhost}"
+APP="$1"
 
 POLL_SECONDS=3
 MAXIMUM_WAIT_SECONDS=7200 # 2 hours.... if your deploy is taking longer, just give up.

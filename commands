@@ -120,6 +120,7 @@ posthooks () {
       abort_previous_app
     fi
   else
+    dokku_log_info1 "No hooks installed. Continuing..."
     continue_previous_app
   fi
 }
