@@ -1,9 +1,8 @@
-# Dokku Graduate
+# dokku-graduate [![Build Status](https://img.shields.io/travis/glassechidna/dokku-graduate.svg?branch=master "Build Status")](https://travis-ci.org/glassechidna/dokku-graduate)
 
 [Homepage](http://glassechidna.github.io/dokku-graduate/): http://glassechidna.github.io/dokku-graduate/
 
-Dokku Graduate is a simple plug-in for Dokku that helps manage the deployment of
-multiple Dokku apps to multiple environments.
+Dokku Graduate is a simple plug-in for Dokku that helps manage the deployment of multiple Dokku apps to multiple environments.
 
 This plugin is designed to be flexible, but in general builds off the natural
 relationship between environments e.g.
@@ -20,11 +19,15 @@ consider that battle tested.
 
 ### Installation
 
-You'll need to install Dokku Graduate on at least two machines (environments):
+```shell
+# on 0.3.x
+cd /var/lib/dokku/plugins
+git clone https://github.com/glassechidna/dokku-graduate.git dokku-graduate
+dokku plugins-install
 
-    cd /var/lib/dokku/plugins
-    sudo git clone https://github.com/glassechidna/dokku-graduate.git
-    sudo dokku plugins-install
+# on 0.4.x
+dokku plugin:install https://github.com/glassechidna/dokku-graduate.git dokku-graduate
+```
 
 ### Linking environments
 
