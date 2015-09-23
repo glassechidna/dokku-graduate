@@ -19,6 +19,8 @@ consider that battle tested.
 
 ### Installation
 
+You'll need to install Dokku Graduate on at least two machines (environments):
+
 ```shell
 # on 0.3.x
 cd /var/lib/dokku/plugins
