@@ -1,0 +1,4 @@
+[plugin]
+description = "manages dokku application pipelines"
+version = "1.0.0"
+[plugin.config]

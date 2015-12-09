@@ -32,7 +32,8 @@ require_clean_work_tree () {
   fi
 
   # Disallow untracked files
-  local untracked=$(git ls-files --other --exclude-standard --exclude-from=.gitignore --exclude-per-directory=.gitignore --directory)
+  local untracked
+  untracked=$(git ls-files --other --exclude-standard --exclude-from=.gitignore --exclude-per-directory=.gitignore --directory)
   if [[ $untracked ]]; then
     echo >&2 "cannot $1: $DOKKU_ROOT contains untracked files."
     printf '%s\n' "${untracked[@]}" >&2
@@ -50,7 +51,7 @@ require_clean_work_tree () {
 }
 
 environment_url () {
-  echo $(grep -oP "(?<=\b$1=).+$" "$DOKKU_ROOT/GRADUATE_ENVIRONMENTS" 2> /dev/null)
+  grep -oP "(?<=\b$1=).+$" "$DOKKU_ROOT/GRADUATE_ENVIRONMENTS" 2> /dev/null
 }
 
 confirm () {
@@ -91,7 +92,8 @@ abort_previous_app () {
 
   if (( $APP_INDEX >= 0 )); then
     local app=${APPS[$APP_INDEX]}
-    ssh -t dokku@$ENVIRONMENT_URL "graduate:abort $app" 2> /dev/null
+    local cmd="graduate:abort $app"
+    ssh -t dokku@$ENVIRONMENT_URL $cmd 2> /dev/null
   fi
 }
 
@@ -100,7 +102,8 @@ continue_previous_app () {
 
   if (( $APP_INDEX >= 0 )); then
     local app=${APPS[$APP_INDEX]}
-    ssh -t dokku@$ENVIRONMENT_URL "graduate:continue $app" 2> /dev/null
+    local cmd="graduate:continue $app"
+    ssh -t dokku@$ENVIRONMENT_URL $cmd 2> /dev/null
   else
     dokku_log_info1 "All apps deployed to $ENVIRONMENT."
   fi
@@ -341,16 +344,22 @@ case "$CMD" in
     ;;
 
   help | graduate:help)
-    cat && cat<<EOF
-    graduate <environment>                          Push all apps to the environment
-    graduate:add-environment <name> <url>           Add an environment.
-    graduate:rm-environment <name>                  Remove an environment
-    graduate:environments                           List environments
-    graduate:add-hook <PRE | POST> <command>        Add pre or post graduation hook
-    graduate:rm-hook <PRE | POST> <index>           Remove a hook by its index
-    graduate:hooks                                  List hooks with their indexes
-    graduate:key                                    Print this environments public key
+    HELP=$(cat<<EOF
+    graduate <environment>, Push all apps to the environment
+    graduate:add-environment <name> <url>, Add an environment.
+    graduate:rm-environment <name>, Remove an environment
+    graduate:environments, List environments
+    graduate:add-hook <PRE | POST> <command>, Add pre or post graduation hook
+    graduate:rm-hook <PRE | POST> <index>, Remove a hook by its index
+    graduate:hooks, List hooks with their indexes
+    graduate:key, Print this environments public key
 EOF
+)
+    if [[ -n $DOKKU_API_VERSION ]]; then
+      echo "$HELP"
+    else
+      cat && echo "$HELP"
+    fi
     ;;
 
   # Private commands
