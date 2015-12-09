@@ -33,11 +33,19 @@ EOF
 fi
 pushd "$DOKKU_ROOT" > /dev/null
 
-CHECK_DEPLOY_DIR="$(dirname $0)/../zzz_dokku-graduate"
+CHECK_DEPLOY_DIR="$PLUGIN_AVAILABLE_PATH/zzz_graduate"
 
 if ! [[ -d "$CHECK_DEPLOY_DIR" ]]; then
   mkdir "$CHECK_DEPLOY_DIR"
 fi
+
+cat<<"EOF" > "$CHECK_DEPLOY_DIR/plugin.toml"
+[plugin]
+description = "Automatically installed dokku-graduate component"
+version = "1.0.0"
+[plugin.config]
+
+EOF
 
 cat<<"EOF" > "$CHECK_DEPLOY_DIR/check-deploy"
 #!/usr/bin/env bash
@@ -113,6 +121,8 @@ case "$CMD" in
 esac
 
 EOF
+
+cp -rf "$CHECK_DEPLOY_DIR" "$PLUGIN_ENABLED_PATH/zzz_graduate"
 
 SSH_PRIVATE_KEY=/home/dokku/.ssh/id_rsa
 if ! [[ -f "$SSH_PRIVATE_KEY" ]]; then
