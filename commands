@@ -68,8 +68,10 @@ confirm () {
 
 locate_apps () {
   APPS=()
-  for app in "$DOKKU_ROOT"/*/CONTAINER; do
-    APPS+=( $(basename "$(dirname "$app")") )
+  for app in $(dokku_apps); do
+    if [ -f "$DOKKU_ROOT/$app/CONTAINER"* ]; then
+      APPS+=( $app )
+    fi
   done
 }
 
