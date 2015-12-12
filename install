@@ -122,6 +122,8 @@ esac
 
 EOF
 
+chmod 755 "$CHECK_DEPLOY_DIR/commands"
+
 cp -rf "$CHECK_DEPLOY_DIR" "$PLUGIN_ENABLED_PATH/zzz_graduate"
 
 SSH_PRIVATE_KEY=/home/dokku/.ssh/id_rsa
