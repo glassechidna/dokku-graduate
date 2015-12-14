@@ -12,7 +12,7 @@ if (( $(git status &> /dev/null)$? )); then
 /*/branches/
 /*/cache/
 /*/config
-/*/CONTAINER
+/*/CONTAINER*
 /*/description
 /*/hooks/
 /*/info/
