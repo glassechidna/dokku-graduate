@@ -2,7 +2,8 @@
 set -eo pipefail; [[ $DOKKU_TRACE ]] && set -x
 
 pushd "$DOKKU_ROOT" > /dev/null
-if (( $(git status &> /dev/null)$? )); then
+git_status_result=$(git status &> /dev/null)$?
+if (( git_status_result )); then
   git init --quiet "$DOKKU_ROOT"
   cat<<EOF > "$DOKKU_ROOT/.gitignore"
 .DS_Store

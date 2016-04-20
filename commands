@@ -69,7 +69,8 @@ confirm () {
 locate_apps () {
   APPS=()
   for app in $(dokku_apps); do
-    if [ -f "$DOKKU_ROOT/$app/CONTAINER"* ]; then
+    local running_containers=( $(find "$DOKKU_ROOT/$app/" -maxdepth 1 -name "CONTAINER*") )
+    if [ ${#running_containers[@]} -gt 0 ]; then
       APPS+=( $app )
     fi
   done
@@ -82,7 +83,7 @@ prehooks () {
     bash "$DOKKU_ROOT/GRADUATE_PRE_HOOKS" && true
     local hooks=$?
 
-    if (( $hooks != 0 )); then
+    if (( hooks != 0 )); then
       dokku_log_fail "Pre-graduation hooks failed. Graduation to $ENVIRONMENT cancelled."
     fi
   fi
@@ -92,7 +93,7 @@ abort_previous_app () {
   ABORTING=true
   let 'APP_INDEX -= 1' || true
 
-  if (( $APP_INDEX >= 0 )); then
+  if (( APP_INDEX >= 0 )); then
     local app=${APPS[$APP_INDEX]}
     local cmd="graduate:abort $app"
     ssh -t dokku@$ENVIRONMENT_URL $cmd 2> /dev/null
@@ -102,7 +103,7 @@ abort_previous_app () {
 continue_previous_app () {
   let 'APP_INDEX -= 1' || true
 
-  if (( $APP_INDEX >= 0 )); then
+  if (( APP_INDEX >= 0 )); then
     local app=${APPS[$APP_INDEX]}
     local cmd="graduate:continue $app"
     ssh -t dokku@$ENVIRONMENT_URL $cmd 2> /dev/null
@@ -118,7 +119,7 @@ posthooks () {
     bash "$DOKKU_ROOT/GRADUATE_POST_HOOKS" && true
     local hooks=$?
 
-    if (( $hooks == 0 )); then
+    if (( hooks == 0 )); then
       continue_previous_app
     else
       dokku_log_warn "Post-graduation hooks failed. Aborting graduation..."
@@ -133,7 +134,7 @@ posthooks () {
 deploy_next_app () {
   let 'APP_INDEX += 1' || true
 
-  if (( $APP_INDEX < ${#APPS[@]} )); then
+  if (( APP_INDEX < ${#APPS[@]} )); then
     local app=${APPS[$APP_INDEX]}
     local appdir="$DOKKU_ROOT/$app"
 
