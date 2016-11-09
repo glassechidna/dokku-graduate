@@ -80,7 +80,7 @@ prehooks () {
   dokku_log_info1 "Executing pre-graduation hooks..."
 
   if [[ -f "$DOKKU_ROOT/GRADUATE_PRE_HOOKS" ]]; then
-    bash "$DOKKU_ROOT/GRADUATE_PRE_HOOKS" && true
+    bash -e "$DOKKU_ROOT/GRADUATE_PRE_HOOKS" && true
     local hooks=$?
 
     if (( hooks != 0 )); then
@@ -116,7 +116,7 @@ posthooks () {
   dokku_log_info1 "Executing post-graduation hooks..."
 
   if [[ -f "$DOKKU_ROOT/GRADUATE_POST_HOOKS" ]]; then
-    bash "$DOKKU_ROOT/GRADUATE_POST_HOOKS" && true
+    bash -e "$DOKKU_ROOT/GRADUATE_POST_HOOKS" && true
     local hooks=$?
 
     if (( hooks == 0 )); then
