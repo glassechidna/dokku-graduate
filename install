@@ -99,32 +99,6 @@ EOF
 
 chmod 755 "$CHECK_DEPLOY_DIR/check-deploy"
 
-cat<<"EOF" > "$CHECK_DEPLOY_DIR/commands"
-#!/usr/bin/env bash
-# This script is a component of the dokku-graduate plugin. It is installed here,
-# alongside the check-deploy script as each directory is considered a plugin,
-# and each plugin must implement the help command.
-set -eo pipefail; [[ $DOKKU_TRACE ]] && set -x
-
-CMD="$1"
-[[ $CMD ]] && {
-  shift
-}
-
-case "$CMD" in
-  help)
-    cat
-    ;;
-
-  *)
-    exit $DOKKU_NOT_IMPLEMENTED_EXIT
-    ;;
-esac
-
-EOF
-
-chmod 755 "$CHECK_DEPLOY_DIR/commands"
-
 cp -rf "$CHECK_DEPLOY_DIR" "$PLUGIN_ENABLED_PATH/zzz_graduate"
 
 SSH_PRIVATE_KEY=/home/dokku/.ssh/id_rsa
@@ -132,4 +106,3 @@ if ! [[ -f "$SSH_PRIVATE_KEY" ]]; then
   ssh-keygen -f "$SSH_PRIVATE_KEY" -t rsa -N '' > /dev/null
 fi
 
-chmod 755 "$CHECK_DEPLOY_DIR/commands"
