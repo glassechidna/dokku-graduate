@@ -210,7 +210,7 @@ case "$CMD" in
       shift
     }
 
-    ENVIRONMENT_URL=$(environment_url $ENVIRONMENT)
+    export ENVIRONMENT_URL=$(environment_url $ENVIRONMENT)
 
     if ! [[ $ENVIRONMENT_URL ]]; then
       dokku_log_fail "Unknown environment: $ENVIRONMENT"
@@ -226,7 +226,7 @@ case "$CMD" in
 
     pushd "$DOKKU_ROOT" > /dev/null
 
-    LAST_TAG=$(git tag | awk 'match($0, /'$ENVIRONMENT'\/[0-9]+/, a){print a[0]}' | tail -1)
+    export LAST_TAG=$(git tag | awk 'match($0, /'$ENVIRONMENT'\/[0-9]+/, a){print a[0]}' | tail -1)
 
     if [[ $LAST_TAG ]]; then
       CHANGES=$(git diff --exit-code --quiet $LAST_TAG..HEAD)$? || true
